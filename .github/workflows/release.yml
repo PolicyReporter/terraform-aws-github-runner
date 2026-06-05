@@ -14,29 +14,38 @@ jobs:
       contents: write
       actions: write
     steps:
-      - uses: actions/setup-node@60edb5dd545a775178f52524783378180af0d1f8 # v4.0.2
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # ratchet:actions/setup-node@v6
         with:
           node-version: 20
-      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # ratchet:actions/checkout@v4
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # ratchet:actions/checkout@v6
       - name: Build dist
         working-directory: lambdas
         run: yarn install --frozen-lockfile && yarn run test && yarn dist
+      - name: Decode GitHub App private key
+        id: app-private-key
+        shell: bash
+        env:
+          APP_PRIVATE_KEY_BASE64: ${{ secrets.FOREST_RELEASER_APP_PRIVATE_KEY_BASE64 }}
+        run: |
+          set -euo pipefail
+          private_key=$(printf '%s' "$APP_PRIVATE_KEY_BASE64" | base64 -d | awk 'BEGIN {ORS="\\n"} {print}' | head -c -2)
+          echo "::add-mask::$private_key"
+          echo "private-key=$private_key" >> "$GITHUB_OUTPUT"
       - name: Get installation token
-        uses: philips-software/app-token-action@9f5d57062c9f2beaffafaa9a34f66f824ead63a9 # ratchet:philips-software/app-token-action@v2.0.0
+        uses: actions/create-github-app-token@7bd03711494f032dfa3be3558f7dc8787b0be333 # ratchet:actions/create-github-app-token@v3.1.0
         id: token
         with:
-          app_id: ${{ secrets.FOREST_RELEASER_APP_ID }}
-          app_base64_private_key: ${{ secrets.FOREST_RELEASER_APP_PRIVATE_KEY_BASE64 }}
-          auth_type: installation
+          app-id: ${{ secrets.FOREST_RELEASER_APP_ID }}
+          private-key: ${{ steps.app-private-key.outputs.private-key }}
       - name: Extract branch name
         id: branch
         shell: bash
         run: echo "name=${GITHUB_REF#refs/heads/}" >> $GITHUB_OUTPUT
       - name: Release
         id: release
-        uses: google-github-actions/release-please-action@cc61a07e2da466bebbc19b3a7dd01d6aecb20d1e # ratchet:google-github-actions/release-please-action@v3
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # ratchet:googleapis/release-please-action@v5.0.0
         with:
-          default-branch: ${{ steps.branch.outputs.name }}
+          target-branch: ${{ steps.branch.outputs.name }}
           release-type: terraform-module
           token: ${{ steps.token.outputs.token }}
       - name: Upload Release Asset
